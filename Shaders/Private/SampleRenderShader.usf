@@ -1,0 +1,35 @@
+#include "/Engine/Private/Common.ush"
+
+
+Texture2D SceneColorTexture;
+SamplerState SceneColorSampler;
+
+void MainPS(
+noperspective float4 UVAndScreenPos : TEXCOORD0,
+float4 SvPosition : SV_POSITION,
+out float4 OutColor : SV_Target0
+)
+{
+	float2 UV = UVAndScreenPos.xy;
+	float3 FinalColor = float3(0.0,0.0,0.0);
+	for (int x = -1; x <=1; ++x)
+	{
+		for (int y = -1; y <=1; ++y)
+		{
+			float2 SampleUV = UV + (float2(x,y) * View.BufferSizeAndInvSize.zw);
+			float3 SamplerColor = Texture2DSample(SceneColorTexture, SceneColorSampler,SampleUV).rgb;
+			if(x==0 && y==0)
+			{
+				FinalColor +=(8 * SamplerColor);
+			}
+			else
+			{
+				FinalColor +=(-1 * SamplerColor);
+			}
+		}
+		FinalColor = dot(FinalColor,float3(0.299,0.587,0.114));
+		OutColor = float4(FinalColor,1.0);
+	}
+}
+
+

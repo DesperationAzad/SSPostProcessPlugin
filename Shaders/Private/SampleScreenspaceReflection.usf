@@ -1,0 +1,89 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneTextureParameters.ush"
+#include "/Engine/Private/SSRT/SSRTRayCast.ush"
+#include "/Engine/Private/Random.ush"
+
+Texture2D SceneColorTexture;
+SamplerState SceneColorSampler;
+Texture2D HZB;
+SamplerState HZBSampler;
+float4 HZBUvFactorAndInvFactor;
+
+void MainPS(
+noperspective float4 UVAndScreenPos : TEXCOORD0,
+float4 SvPosition : SV_POSITION,
+out float4 OutColor : SV_Target0
+)
+{
+	
+	
+	//float2 UV = UVAndScreenPos.xy;
+	float2 UV = SvPosition.xy * View.BufferSizeAndInvSize.zw;
+	float2 ScreenPos = ViewportUVToScreenPos((SvPosition.xy - View.ViewRectMin.xy) * View.ViewSizeAndInvSize.zw);
+	uint2 PixelPos = (uint2)SvPosition.xy;
+
+
+	/**********************************/
+	//FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
+	//OutColor = float4(GBuffer.BaseColor,1.0f);
+	float3 SamplerColor = Texture2DSample(SceneColorTexture, SceneColorSampler,UV).rgb;
+	//OutColor = float4(SamplerColor.brg,1.0f);
+
+	// 1. 从 G-Buffer 提取数据
+	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
+	
+	float3 N = GBuffer.WorldNormal;
+	const float SceneDepth = GBuffer.Depth;
+	const float Roughness = GBuffer.Roughness;
+	// 2. 重建世界坐标
+	const float3 PositionTranslatedWorld = mul(float4(GetScreenPositionForProjectionType(ScreenPos, SceneDepth), SceneDepth, 1), View.ScreenToTranslatedWorld).xyz;
+	const float3 V = -GetCameraVectorFromTranslatedWorldPosition(PositionTranslatedWorld);
+
+//单根光线模拟粗糙度为0的简单实现
+	float3 L = reflect(-V, N);;
+
+	float StepOffset = InterleavedGradientNoise(SvPosition.xy, View.StateFrameIndexMod8);
+
+	float3 HitUVz;
+	float Level = 0;
+	uint NumSteps = 32;
+	bool bDebugPrint = all(PixelPos == uint2(View.ViewSizeAndInvSize.xy) / 2);
+	bool bHit = RayCast(
+	HZB,                        // HZB 纹理
+	HZBSampler,                 // HZB 采样器
+	PositionTranslatedWorld,                   // 光线起点
+	L ,                 // 光线方向
+	GBuffer.Roughness,          // 表面粗糙度
+	SceneDepth,                 // 当前像素深度
+	NumSteps,                        // 最大步进次数
+	StepOffset, // 随机偏移
+	HZBUvFactorAndInvFactor,   // HZB UV 缩放参数
+	bDebugPrint,				//介是嘛？？？
+	HitUVz,                     // 命中点的 UV 和深度
+	Level                    // 命中点的 HZB 层级
+);
+	// 6. 采样反射颜色
+	float4 SampleColor = SampleScreenColor( SceneColorTexture, SceneColorSampler, UV );
+	if (bHit)
+	{
+		
+		float2 HitUV = HitUVz.xy;
+		FGBufferData HitGBuffer = GetGBufferDataFromSceneTextures(HitUV);
+		//float3 HitColor = Texture2DSample(SceneColorTexture, SceneColorSampler,HitUV).rgb;
+		
+		
+		OutColor = (float4(HitGBuffer.BaseColor,1.0f)+SampleColor)/2.0;
+		//OutColor = float4(HitColor,1.0f);
+		
+	}else
+	{
+		// 7. 未命中时返回黑色
+		OutColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
+		OutColor += SampleColor;
+	}
+	//OutColor+=float4(SamplerColor,1.0f);
+
+
+}
+
+
