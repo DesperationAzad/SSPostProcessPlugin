@@ -28,7 +28,7 @@ RENDERER_API FSceneTextureParameters GetSceneTextureParameters(FRDGBuilder& Grap
 | ------------------------ | --------------------------------- | ------ |
 | `r.SampleSSR`            | 开/关屏幕空间反射效果，全屏幕1spp | 1/0    |
 | `r.SamplePostProcessing` | 基于拉普拉斯算子的简单描边效果    | 1/0    |
-|                          |                                   |        |
+| `r.SampleSSAO`           | 开/关屏幕空间环境光遮蔽效果       | 1/0    |
 
 ### TODO：
 
