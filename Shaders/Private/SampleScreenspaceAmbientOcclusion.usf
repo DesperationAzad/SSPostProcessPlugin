@@ -1,0 +1,109 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneTextureParameters.ush"
+#include "/Engine/Private/Random.ush"
+#include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/PostProcessCommon.ush"
+
+Texture2D SceneColorTexture;
+SamplerState SceneColorSampler;
+Texture2D RandomNormalTexture;
+SamplerState RandomNormalSampler;
+Texture2D TestSceneDepthTexture;
+SamplerState TestSceneDepthSampler;
+Texture2D HZBTexture;
+SamplerState HZBSampler;
+float4 HZBUvBiasFactor;
+float4 ScreenSpaceAOParams[2];
+
+#define SAMPLE_COUNT 16
+#define PI 3.14159265359
+
+static const float3 HemisphereSamples[SAMPLE_COUNT] =
+{
+	float3(0.0471, -0.1210, 0.3179), float3(-0.1896, -0.1120, 0.2953),
+    float3(-0.1349, 0.0273, 0.3121), float3(0.1474, 0.0463, 0.2991),
+    float3(0.0687, -0.4643, 0.2848), float3(-0.4361, -0.1675, 0.2709),
+    float3(-0.2517, 0.2005, 0.2874), float3(0.2461, 0.1890, 0.2768),
+    float3(0.3319, -0.4390, 0.2136), float3(-0.4149, 0.3798, 0.2070),
+    float3(-0.3602, -0.3755, 0.2042), float3(0.2128, -0.1780, 0.3247),
+    float3(0.1790, 0.3545, 0.2763), float3(-0.1206, 0.1985, 0.3185),
+    float3(-0.2035, -0.3515, 0.2948), float3(0.3865, -0.0341, 0.2834)
+};
+
+void MainPS(
+    noperspective float4 UVAndScreenPos : TEXCOORD0,
+    float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0
+)
+{
+	//float2 UV = UVAndScreenPos.xy;
+	float2 UV = SvPosition.xy * View.ViewSizeAndInvSize.zw;
+	uint2 PixelPos = (uint2) SvPosition.xy;
+	float2 ScreenPos = ViewportUVToScreenPos((SvPosition.xy - View.ViewRectMin.xy) * View.ViewSizeAndInvSize.zw);
+	float3 SamplerColor = Texture2DSample(SceneColorTexture, SceneColorSampler, UV).rgb;
+	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
+	float SceneDepth = GBuffer.Depth;
+	float3 WorldNormal = GBuffer.WorldNormal;
+	const float3 WorldPos = mul(float4(GetScreenPositionForProjectionType(ScreenPos, SceneDepth), SceneDepth, 1), View.ScreenToTranslatedWorld).xyz;
+	
+	// TODO
+	float AOIntensity = ScreenSpaceAOParams[0].w;
+	float AORadius = ScreenSpaceAOParams[1].z;
+	float AOAngleBias = ScreenSpaceAOParams[0].y;
+	float2 RandomScale = ScreenSpaceAOParams[1].xy;
+	
+	float3 RandomVec = Texture2DSample(RandomNormalTexture, RandomNormalSampler, UV * RandomScale).xyz;
+	
+	float3 Tangent = normalize(RandomVec - WorldNormal * dot(RandomVec, WorldNormal));
+	float3 Bitangent = cross(WorldNormal, Tangent);
+	float3x3 TBN = float3x3(Tangent, Bitangent, WorldNormal);
+	
+	float AO = 0.0;
+	float TotalSamples = 0.01;
+    
+	for (int i = 0; i < SAMPLE_COUNT; i++)
+	{
+		// 变换采样点到切线空间
+		float3 SamplePoint = mul(HemisphereSamples[i], TBN);
+		SamplePoint = WorldPos + SamplePoint * AORadius;
+
+		float4 SampleClipPos = mul(float4(SamplePoint, 1.0), View.TranslatedWorldToClip);
+		SampleClipPos.xyz /= SampleClipPos.w;
+		if (any(abs(SampleClipPos.xy) > 1.0))
+			continue;
+		float2 SampleUV = SampleClipPos.xy * float2(0.5, -0.5) + 0.5; //float2(0.5, -0.5)
+		float2 SamplePixelPos = SampleUV * View.ViewSizeAndInvSize.xy;
+		float2 SampleScreenPos = ViewportUVToScreenPos((SamplePixelPos.xy - View.ViewRectMin.xy) * View.ViewSizeAndInvSize.zw);
+		
+		FGBufferData GSampleBuffer = GetGBufferDataFromSceneTextures(SampleUV);
+		float SampleDepth = GSampleBuffer.Depth;
+		float4 TempWorldPos = mul(float4(GetScreenPositionForProjectionType(SampleScreenPos, SampleDepth), SampleDepth, 1), View.ScreenToTranslatedWorld);
+		float3 SampleWorldPos = TempWorldPos.xyz / TempWorldPos.w;
+		//float SampleDepthDelta = SampleWorldPos.z - WorldPos.z;
+		float3 V = SampleWorldPos - WorldPos;
+		float SampleDepthDelta = dot(normalize(V), WorldNormal);
+		
+		//float RangeCheck = smoothstep(0.0, 1.0, AORadius / distance(WorldPos, SampleWorldPos));
+
+		float Dist = length(V);
+		float RangeCheck = smoothstep(0.0, 1.0, 1.0 - Dist / AORadius);
+        
+        // 10. 计算实际遮蔽
+		float Occlusion = max(0.0, SampleDepthDelta - AOAngleBias) * RangeCheck;
+		AO += Occlusion;
+		TotalSamples += 1;
+	}
+    
+	if (TotalSamples > 1)
+	{
+		AO = 1.0 - (AO / TotalSamples);
+	}
+	else
+	{
+		AO = 1.0;
+	}
+	
+	OutColor = float4(pow(saturate(AO), AOIntensity) * SamplerColor, 1.0);
+	//OutColor = float4(SceneDepth, SceneDepth, SceneDepth, 1.0);
+	//OutColor = float4(0.0, 0.0, 0.0, 1.0);
+}

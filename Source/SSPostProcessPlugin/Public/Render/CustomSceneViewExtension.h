@@ -8,6 +8,11 @@
 #include "PostProcess/PostProcessing.h"
 #include "PostProcess/PostProcessMaterial.h"
 #include "SceneTextureParameters.h"
+
+#include "RendererInterface.h"
+#include "RenderGraph.h"
+#include "RenderGraphDefinitions.h"
+#include "SceneTextures.h"
 #if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
 #include "DataDrivenShaderPlatformInfo.h"
 #endif
@@ -43,6 +48,8 @@ public:
 	                                        const FPostProcessMaterialInputs& Inputs);
 	FScreenPassTexture ScreenspaceReflectionPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView,
 	                                                       const FPostProcessMaterialInputs& Inputs);
+	FScreenPassTexture ScreenspaceAmbientOcclusionPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView,
+																 const FPostProcessMaterialInputs& Inputs);
 
 public:
 
@@ -105,4 +112,31 @@ public:
 
 	END_SHADER_PARAMETER_STRUCT()
 };
+
+class FSampleSSAOPS : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FSampleSSAOPS);
+	SHADER_USE_PARAMETER_STRUCT(FSampleSSAOPS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
+		SHADER_PARAMETER_TEXTURE(Texture2D, RandomNormalTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, RandomNormalSampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, TestSceneDepthTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, TestSceneDepthSampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HZBTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, HZBSampler)
+		SHADER_PARAMETER(FVector4f, HZBUvBiasFactor)
+		SHADER_PARAMETER_ARRAY(FVector4f, ScreenSpaceAOParams, [2])
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+
+		RENDER_TARGET_BINDING_SLOTS()
+
+	END_SHADER_PARAMETER_STRUCT()
+};
+
 

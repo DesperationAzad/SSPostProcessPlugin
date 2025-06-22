@@ -18,9 +18,12 @@ public class SSPostProcessPlugin : ModuleRules
 		var EngineDir = Path.GetFullPath(Target.RelativeEnginePath);
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				Path.Combine(EngineDir, "Source/Runtime/Renderer/Private")
+				Path.Combine(EngineDir, "Source/Runtime/Renderer/Private"),
 				// ... add other private include paths required here ...
-				
+				Path.Combine(EngineDir, "Source/Runtime/Renderer/Private/PostProcess"),
+				Path.Combine(EngineDir, "Source/Runtime/RenderCore/Private"),
+				Path.Combine(EngineDir, "Source/Runtime/RHI/Private"),
+				Path.Combine(EngineDir, "Source/Runtime/Engine/Classes/Engine"),
 			}
 		);
 			
@@ -36,7 +39,10 @@ public class SSPostProcessPlugin : ModuleRules
 				"RHI",
 				"Projects", 
 				// ... add other public dependencies that you statically link with here ...
-			}
+				// 添加新依赖
+                "ImageWrapper",
+                "ImageCore",
+            }
 		);
 			
 		
@@ -48,7 +54,12 @@ public class SSPostProcessPlugin : ModuleRules
 				"Slate",
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...	
-			}
+				// 添加新依赖
+                "RenderCore",
+                "Renderer",
+                "RHI",
+				"RHICore",
+            }
 		);
 		
 		
